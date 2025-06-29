@@ -27,13 +27,14 @@ import {FixedPointMathLib} from "@solmate/src/utils/FixedPointMathLib.sol";
 
 contract ERC4626 is ERC20 {
     using FixedPointMathLib for uint256;
-    /*-------------------------Immutables----------------------------*/
+    /*-------------------------Immutabales----------------------------*/
 
     ERC20 private immutable asset; // underlying asset
     address private immutable i_owner;
     uint256 private basis_point_fee = 200;
     uint256 private constant FEE_DENOMINATOR = 10_000;
     uint256 private constant MAX_BASIS_POINT_FEE = 500;
+    uint256 private constant INITIAL_SHARES = 1_000;
 
     constructor(
         ERC20 _asset,
@@ -43,6 +44,8 @@ contract ERC4626 is ERC20 {
     ) ERC20(_name, _symbol, _decimals) {
         asset = _asset;
         i_owner = msg.sender;
+        _mint(address(1), INITIAL_SHARES);
+        asset.transferFrom(i_owner, address(this), 1);
     }
 
     /*----------------------------EVENTS-----------------------------*/
@@ -81,12 +84,17 @@ contract ERC4626 is ERC20 {
         _;
     }
 
+    modifier validReceiver(address receiver) {
+        require(receiver != address(0), "INVALID RECEIVER");
+        _;
+    }
+
     /*--------------------DEPOSIT/WITHDRAWAL LOGIC-------------------*/
 
     function deposit(
         uint256 assets,
         address receiver
-    ) public returns (uint256 shares) {
+    ) public validReceiver(receiver) returns (uint256 shares) {
         require(
             (shares = previewDeposit(assets)) != 0,
             "ZERO SHARES WILL BE RECEIVED"
@@ -103,7 +111,7 @@ contract ERC4626 is ERC20 {
     function mint(
         uint256 shares,
         address receiver
-    ) public returns (uint256 assets) {
+    ) public validReceiver(receiver) returns (uint256 assets) {
         require(
             asset.balanceOf(msg.sender) >= (assets = previewMint(shares)),
             "INSUFFICIENT ASSETS"
@@ -120,7 +128,7 @@ contract ERC4626 is ERC20 {
         uint256 assets,
         address receiver,
         address owner
-    ) public returns (uint256 shares) {
+    ) public validReceiver(receiver) returns (uint256 shares) {
         require(
             (shares = previewWithdraw(assets)) <= balanceOf[owner],
             "INSUFFICIENT BALANCE OF SHARES"
@@ -142,7 +150,7 @@ contract ERC4626 is ERC20 {
         uint256 shares,
         address receiver,
         address owner
-    ) public returns (uint256 assets) {
+    ) public validReceiver(receiver) returns (uint256 assets) {
         require(shares <= balanceOf[owner], "INSUFFICIENT BALANCE OF SHARES");
         if (owner != msg.sender) {
             if (allowance[owner][msg.sender] != type(uint256).max)
@@ -159,17 +167,10 @@ contract ERC4626 is ERC20 {
 
     /*-------CONVERSION FROM ASSETS TO SHARES AND VICE VERSA---------*/
 
-    // total asset supply in vault = asset.balance[address(this)]
-    // total shares supply in vault = balanceOf[address(this)]
-
     function convertToShares(
         uint256 assets
     ) public view returns (uint256 shares) {
-        uint256 supply = totalSupply;
-        return
-            supply == 0
-                ? assets
-                : totalSupply.mulDivDown(assets, totalAssets());
+        return totalSupply.mulDivDown(assets, totalAssets());
     }
 
     function convertToAssets(
@@ -265,17 +266,4 @@ contract ERC4626 is ERC20 {
 
         return assets;
     }
-
-    /** Positives:
-✅ Fixed critical fee math - Proper basis point scaling (200 = 2%) with FEE_DENOMINATOR
-✅ Safer math operations - Using FixedPointMathLib prevents rounding errors
-✅ Fee withdrawal mechanism - WithdrawVaultAssets() lets owner claim accumulated fees
-✅ Fee cap - MAX_BASIS_POINT_FEE prevents excessive fees (max 5%)
-✅ Consistent asset handling - Fixed mint() to transfer assets to vault, not receiver
-
-    Areas for Improvement:
-⚠️ No reentrancy protection - External calls before state changes (asset.transfer)
-⚠️ No zero-address checks - In functions like deposit(receiver)
-⚠️ Unbounded loops risk - If asset has callback hooks (not common but possible)
-*/
 }
