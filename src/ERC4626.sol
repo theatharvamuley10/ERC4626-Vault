@@ -28,17 +28,18 @@ contract ERC4626 is ERC20 {
     /*-------------------------Immutables----------------------------*/
 
     ERC20 private immutable asset; // underlying asset
-    address private immutable owner;
-    uint256 private baseFee = 0.02;
+    address private immutable i_owner;
+    uint256 private basis_point_fee = 200;
+    uint256 private constant FEE_DENOMINATOR = 10_000;
 
     constructor(
         ERC20 _asset,
-        string _name,
-        string _symbol,
+        string memory _name,
+        string memory _symbol,
         uint8 _decimals
     ) ERC20(_name, _symbol, _decimals) {
         asset = _asset;
-        owner = msg.sender;
+        i_owner = msg.sender;
     }
 
     /*----------------------------EVENTS-----------------------------*/
@@ -56,18 +57,25 @@ contract ERC4626 is ERC20 {
         address indexed owner,
         uint256 assets,
         uint256 shares
-    )
+    );
 
     event Fee_Updated(
         uint256 indexed oldFee,
         uint256 indexed newFee,
-        uint256 indexed owner
-    )
+        address indexed owner
+    );
+
+    event Vault_Assets_Withdrawn(
+        address indexed vault,
+        address indexed owner,
+        uint256 assets
+    );
 
     /*---------------------------MODIFIERS---------------------------*/
 
-    modifier onlyOwner {
-        require(msg.sender == owner, "ONLY OWNER CAN PERFORM THIS ACTION");
+    modifier onlyOwner() {
+        require(msg.sender == i_owner, "ONLY OWNER CAN PERFORM THIS ACTION");
+        _;
     }
 
     /*--------------------DEPOSIT/WITHDRAWAL LOGIC-------------------*/
@@ -75,7 +83,7 @@ contract ERC4626 is ERC20 {
     function deposit(
         uint256 assets,
         address receiver
-    ) public nonpayable returns (uint256 shares) {
+    ) public returns (uint256 shares) {
         require(
             (shares = previewDeposit(assets)) != 0,
             "ZERO SHARES WILL BE RECEIVED"
@@ -92,15 +100,15 @@ contract ERC4626 is ERC20 {
     function mint(
         uint256 shares,
         address receiver
-    ) public nonpayable returns (uint256 assets) {
+    ) public returns (uint256 assets) {
         require(
-            asset.balanceOf[msg.sender] >= (assets = previewMint(shares)),
+            asset.balanceOf(msg.sender) >= (assets = previewMint(shares)),
             "INSUFFICIENT ASSETS"
         );
 
-        asset.transferFrom(msg.sender, receiver, assets);
+        asset.transferFrom(msg.sender, address(this), assets);
         _mint(receiver, shares);
-        _mint(address(this), convertToShares(assets)-shares);
+        _mint(address(this), convertToShares(assets) - shares);
 
         emit Deposit(msg.sender, receiver, assets, shares);
     }
@@ -109,18 +117,19 @@ contract ERC4626 is ERC20 {
         uint256 assets,
         address receiver,
         address owner
-    ) public nonpayable returns (uint256 shares) {
+    ) public returns (uint256 shares) {
         require(
             (shares = previewWithdraw(assets)) <= balanceOf[owner],
             "INSUFFICIENT BALANCE OF SHARES"
         );
 
-        if (owner != msg.sender){
-            if(allowance[owner][msg.sender] != type(uint256).max) allowance[owner][msg.sender] -= shares;
+        if (owner != msg.sender) {
+            if (allowance[owner][msg.sender] != type(uint256).max)
+                allowance[owner][msg.sender] -= shares;
         }
 
         _burn(owner, shares);
-        _mint(address(this, shares - convertToShares(assets)));
+        _mint(address(this), shares - convertToShares(assets));
         asset.transfer(receiver, assets);
 
         emit Withdraw(msg.sender, receiver, owner, assets, shares);
@@ -130,10 +139,11 @@ contract ERC4626 is ERC20 {
         uint256 shares,
         address receiver,
         address owner
-    ) public nonpayable returns (uint256 assets) {
-        require(shares <= balanceOf[owner],"INSUFFICIENT BALANCE OF SHARES");
-        if (owner != msg.sender){
-            if(allowance[owner][msg.sender] != type(uint256).max) allowance[owner][msg.sender] -= shares;
+    ) public returns (uint256 assets) {
+        require(shares <= balanceOf[owner], "INSUFFICIENT BALANCE OF SHARES");
+        if (owner != msg.sender) {
+            if (allowance[owner][msg.sender] != type(uint256).max)
+                allowance[owner][msg.sender] -= shares;
         }
         assets = previewRedeem(shares);
 
@@ -149,47 +159,53 @@ contract ERC4626 is ERC20 {
     // total asset supply in vault = asset.balance[address(this)]
     // total shares supply in vault = balanceOf[address(this)]
 
-    function totalAssets() public view returns (uint256 totalAssets){
-        return asset.balanceOf[address(this)];
-    }
-
     function convertToShares(
         uint256 assets
     ) public view returns (uint256 shares) {
-        shares = totalSupply * asset / totalAssets;
+        shares = (totalSupply * assets) / totalAssets();
         return shares;
     }
 
     function convertToAssets(
         uint256 shares
     ) public view returns (uint256 assets) {
-        assets = total assets * shares / totalSupply;
+        assets = (totalAssets() * shares) / totalSupply;
         return assets;
     }
 
     /*-----------------SIMULATE DEPOSITS/WITHDRAWALS-----------------*/
 
-    function previewDeposit(uint256 assets) public view returns (uint256 shares){
+    function previewDeposit(
+        uint256 assets
+    ) public view returns (uint256 shares) {
+        uint256 fee;
         shares = convertToShares(assets);
-        fee = baseFee*shares;
+        fee = (basis_point_fee * shares) / FEE_DENOMINATOR;
         return shares - fee;
     }
 
-    function previewMint(uint256 shares) public view returns (uint256 assets){
-        fee = baseFee * shares;
-        assets = convertToAssets(shares+fee);
+    function previewMint(uint256 shares) public view returns (uint256 assets) {
+        uint256 fee;
+        fee = (basis_point_fee * shares) / FEE_DENOMINATOR;
+        assets = convertToAssets(shares + fee);
         return assets;
     }
 
-    function previewWithdraw(uint256 assets) public view returns (uint256 shares){
+    function previewWithdraw(
+        uint256 assets
+    ) public view returns (uint256 shares) {
+        uint256 fee;
         shares = convertToShares(assets);
-        fee = baseFee * shares;
+        fee = (basis_point_fee * shares) / FEE_DENOMINATOR;
         shares += fee;
         return shares;
     }
 
-    function previewRedeem(uint256 shares) public view returns (uint256 assets){
-        fee = baseFee * shares;
+    function previewRedeem(
+        uint256 shares
+    ) public view returns (uint256 assets) {
+        uint256 fee;
+        fee = (basis_point_fee * shares) / FEE_DENOMINATOR;
         shares -= fee;
         assets = convertToAssets(shares);
         return assets;
@@ -221,13 +237,26 @@ contract ERC4626 is ERC20 {
     }
 
     function totalAssets() public view returns (uint256) {
-        return asset.balanceOf[address(this)];
+        return asset.balanceOf(address(this));
     }
 
     /*-----------------------OWNER ONLY FUNCTIONS--------------------*/
 
-    function setFee(uint256 newFee) external onlyOwner{
-        baseFee = newFee;
-        emit (oldFee, newFee, owner);
+    function setFee(uint256 newFee) external onlyOwner {
+        uint256 oldFee = basis_point_fee;
+        basis_point_fee = newFee;
+        emit Fee_Updated(oldFee, newFee, msg.sender);
+    }
+
+    function WithdrawVaultAssets() external onlyOwner returns (uint256 assets) {
+        uint256 shares = balanceOf[address(this)];
+        assets = previewRedeem(shares);
+
+        _burn(address(this), shares);
+        asset.transfer(msg.sender, assets);
+
+        emit Vault_Assets_Withdrawn(address(this), msg.sender, assets);
+
+        return assets;
     }
 }
