@@ -23,14 +23,17 @@
 pragma solidity 0.8.30;
 
 import {ERC20} from "@solmate/src/tokens/ERC20.sol";
+import {FixedPointMathLib} from "@solmate/src/utils/FixedPointMathLib.sol";
 
 contract ERC4626 is ERC20 {
+    using FixedPointMathLib for uint256;
     /*-------------------------Immutables----------------------------*/
 
     ERC20 private immutable asset; // underlying asset
     address private immutable i_owner;
     uint256 private basis_point_fee = 200;
     uint256 private constant FEE_DENOMINATOR = 10_000;
+    uint256 private constant MAX_BASIS_POINT_FEE = 500;
 
     constructor(
         ERC20 _asset,
@@ -162,15 +165,17 @@ contract ERC4626 is ERC20 {
     function convertToShares(
         uint256 assets
     ) public view returns (uint256 shares) {
-        shares = (totalSupply * assets) / totalAssets();
-        return shares;
+        uint256 supply = totalSupply;
+        return
+            supply == 0
+                ? assets
+                : totalSupply.mulDivDown(assets, totalAssets());
     }
 
     function convertToAssets(
         uint256 shares
     ) public view returns (uint256 assets) {
-        assets = (totalAssets() * shares) / totalSupply;
-        return assets;
+        return totalAssets().mulDivDown(shares, totalSupply);
     }
 
     /*-----------------SIMULATE DEPOSITS/WITHDRAWALS-----------------*/
@@ -180,13 +185,13 @@ contract ERC4626 is ERC20 {
     ) public view returns (uint256 shares) {
         uint256 fee;
         shares = convertToShares(assets);
-        fee = (basis_point_fee * shares) / FEE_DENOMINATOR;
+        fee = basis_point_fee.mulDivUp(shares, FEE_DENOMINATOR);
         return shares - fee;
     }
 
     function previewMint(uint256 shares) public view returns (uint256 assets) {
         uint256 fee;
-        fee = (basis_point_fee * shares) / FEE_DENOMINATOR;
+        fee = basis_point_fee.mulDivUp(shares, FEE_DENOMINATOR);
         assets = convertToAssets(shares + fee);
         return assets;
     }
@@ -196,7 +201,7 @@ contract ERC4626 is ERC20 {
     ) public view returns (uint256 shares) {
         uint256 fee;
         shares = convertToShares(assets);
-        fee = (basis_point_fee * shares) / FEE_DENOMINATOR;
+        fee = basis_point_fee.mulDivUp(shares, FEE_DENOMINATOR);
         shares += fee;
         return shares;
     }
@@ -205,7 +210,7 @@ contract ERC4626 is ERC20 {
         uint256 shares
     ) public view returns (uint256 assets) {
         uint256 fee;
-        fee = (basis_point_fee * shares) / FEE_DENOMINATOR;
+        fee = basis_point_fee.mulDivUp(shares, FEE_DENOMINATOR);
         shares -= fee;
         assets = convertToAssets(shares);
         return assets;
@@ -242,15 +247,16 @@ contract ERC4626 is ERC20 {
 
     /*-----------------------OWNER ONLY FUNCTIONS--------------------*/
 
-    function setFee(uint256 newFee) external onlyOwner {
+    function setFee(uint256 new_Fee) external onlyOwner {
+        require(new_Fee <= MAX_BASIS_POINT_FEE, "FEE TOO HIGH");
         uint256 oldFee = basis_point_fee;
-        basis_point_fee = newFee;
-        emit Fee_Updated(oldFee, newFee, msg.sender);
+        basis_point_fee = new_Fee;
+        emit Fee_Updated(oldFee, new_Fee, msg.sender);
     }
 
-    function WithdrawVaultAssets() external onlyOwner returns (uint256 assets) {
+    function withdrawVaultAssets() external onlyOwner returns (uint256 assets) {
         uint256 shares = balanceOf[address(this)];
-        assets = previewRedeem(shares);
+        assets = convertToAssets(shares);
 
         _burn(address(this), shares);
         asset.transfer(msg.sender, assets);
@@ -259,4 +265,17 @@ contract ERC4626 is ERC20 {
 
         return assets;
     }
+
+    /** Positives:
+✅ Fixed critical fee math - Proper basis point scaling (200 = 2%) with FEE_DENOMINATOR
+✅ Safer math operations - Using FixedPointMathLib prevents rounding errors
+✅ Fee withdrawal mechanism - WithdrawVaultAssets() lets owner claim accumulated fees
+✅ Fee cap - MAX_BASIS_POINT_FEE prevents excessive fees (max 5%)
+✅ Consistent asset handling - Fixed mint() to transfer assets to vault, not receiver
+
+    Areas for Improvement:
+⚠️ No reentrancy protection - External calls before state changes (asset.transfer)
+⚠️ No zero-address checks - In functions like deposit(receiver)
+⚠️ Unbounded loops risk - If asset has callback hooks (not common but possible)
+*/
 }
