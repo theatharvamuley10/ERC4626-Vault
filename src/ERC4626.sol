@@ -27,7 +27,7 @@ import {FixedPointMathLib} from "@solmate/src/utils/FixedPointMathLib.sol";
 
 contract ERC4626 is ERC20 {
     using FixedPointMathLib for uint256;
-    /*-------------------------Immutabales----------------------------*/
+    /*-------------------------Immutables-----------------------------*/
 
     ERC20 private immutable asset; // underlying asset
     address private immutable i_owner;
@@ -35,17 +35,11 @@ contract ERC4626 is ERC20 {
     uint256 private constant FEE_DENOMINATOR = 10_000;
     uint256 private constant MAX_BASIS_POINT_FEE = 500;
     uint256 private constant INITIAL_SHARES = 1_000;
+    VaultAccount private VAULT_ACCOUNT;
 
-    constructor(
-        ERC20 _asset,
-        string memory _name,
-        string memory _symbol,
-        uint8 _decimals
-    ) ERC20(_name, _symbol, _decimals) {
-        asset = _asset;
-        i_owner = msg.sender;
-        _mint(address(1), INITIAL_SHARES);
-        asset.transferFrom(i_owner, address(this), 1);
+    struct VaultAccount {
+        uint256 totalAssets;
+        uint256 totalShares;
     }
 
     /*----------------------------EVENTS-----------------------------*/
@@ -89,19 +83,35 @@ contract ERC4626 is ERC20 {
         _;
     }
 
+    /*-------------------------CONSTRUCTOR---------------------------*/
+
+    constructor(
+        ERC20 _asset,
+        string memory _name,
+        string memory _symbol,
+        uint8 _decimals
+    ) ERC20(_name, _symbol, _decimals) {
+        asset = _asset;
+        i_owner = msg.sender;
+        _mint(address(1), INITIAL_SHARES);
+        asset.transferFrom(i_owner, address(this), 1);
+    }
+
     /*--------------------DEPOSIT/WITHDRAWAL LOGIC-------------------*/
 
     function deposit(
         uint256 assets,
         address receiver
-    ) public validReceiver(receiver) returns (uint256 shares) {
+    ) external validReceiver(receiver) returns (uint256 shares) {
         require(
             (shares = previewDeposit(assets)) != 0,
             "ZERO SHARES WILL BE RECEIVED"
         );
 
+        addAssetsToVaultAccount(assets);
         asset.transferFrom(msg.sender, address(this), assets);
 
+        addSharesToVaultAccount(assets);
         _mint(receiver, shares);
         _mint(address(this), convertToShares(assets) - shares);
 
@@ -111,13 +121,16 @@ contract ERC4626 is ERC20 {
     function mint(
         uint256 shares,
         address receiver
-    ) public validReceiver(receiver) returns (uint256 assets) {
+    ) external validReceiver(receiver) returns (uint256 assets) {
         require(
             asset.balanceOf(msg.sender) >= (assets = previewMint(shares)),
             "INSUFFICIENT ASSETS"
         );
 
+        addAssetsToVaultAccount(assets);
         asset.transferFrom(msg.sender, address(this), assets);
+
+        addSharesToVaultAccount(assets);
         _mint(receiver, shares);
         _mint(address(this), convertToShares(assets) - shares);
 
@@ -128,7 +141,7 @@ contract ERC4626 is ERC20 {
         uint256 assets,
         address receiver,
         address owner
-    ) public validReceiver(receiver) returns (uint256 shares) {
+    ) external validReceiver(receiver) returns (uint256 shares) {
         require(
             (shares = previewWithdraw(assets)) <= balanceOf[owner],
             "INSUFFICIENT BALANCE OF SHARES"
@@ -139,8 +152,11 @@ contract ERC4626 is ERC20 {
                 allowance[owner][msg.sender] -= shares;
         }
 
+        withdrawSharesFromVaultAccount(assets);
         _burn(owner, shares);
         _mint(address(this), shares - convertToShares(assets));
+
+        withdrawAssetsFromVaultAccount(assets);
         asset.transfer(receiver, assets);
 
         emit Withdraw(msg.sender, receiver, owner, assets, shares);
@@ -150,7 +166,7 @@ contract ERC4626 is ERC20 {
         uint256 shares,
         address receiver,
         address owner
-    ) public validReceiver(receiver) returns (uint256 assets) {
+    ) external validReceiver(receiver) returns (uint256 assets) {
         require(shares <= balanceOf[owner], "INSUFFICIENT BALANCE OF SHARES");
         if (owner != msg.sender) {
             if (allowance[owner][msg.sender] != type(uint256).max)
@@ -158,25 +174,44 @@ contract ERC4626 is ERC20 {
         }
         assets = previewRedeem(shares);
 
+        withdrawSharesFromVaultAccount(assets);
         _burn(owner, shares);
         _mint(address(this), shares - convertToShares(assets));
+
+        withdrawAssetsFromVaultAccount(assets);
         asset.transfer(receiver, assets);
 
         emit Withdraw(msg.sender, receiver, owner, assets, shares);
     }
 
-    /*-------CONVERSION FROM ASSETS TO SHARES AND VICE VERSA---------*/
+    /*-----------------------OWNER ONLY FUNCTIONS--------------------*/
 
-    function convertToShares(
-        uint256 assets
-    ) public view returns (uint256 shares) {
-        return totalSupply.mulDivDown(assets, totalAssets());
+    function setFee(uint256 new_Fee) external onlyOwner {
+        require(new_Fee <= MAX_BASIS_POINT_FEE, "FEE TOO HIGH");
+        uint256 oldFee = basis_point_fee;
+        basis_point_fee = new_Fee;
+        emit Fee_Updated(oldFee, new_Fee, msg.sender);
     }
 
-    function convertToAssets(
-        uint256 shares
-    ) public view returns (uint256 assets) {
-        return totalAssets().mulDivDown(shares, totalSupply);
+    function withdrawVaultAssets() external onlyOwner returns (uint256 assets) {
+        uint256 shares = balanceOf[address(this)];
+        assets = convertToAssets(shares);
+
+        withdrawSharesFromVaultAccount(assets);
+        _burn(address(this), shares);
+
+        withdrawAssetsFromVaultAccount(assets);
+        asset.transfer(msg.sender, assets);
+
+        emit Vault_Assets_Withdrawn(address(this), msg.sender, assets);
+
+        return assets;
+    }
+
+    /*------------------VIEW UNDERLYING ASSET DETAILS----------------*/
+
+    function getUnderlyingAsset() external view returns (address) {
+        return address(ERC20(asset));
     }
 
     /*-----------------SIMULATE DEPOSITS/WITHDRAWALS-----------------*/
@@ -217,6 +252,16 @@ contract ERC4626 is ERC20 {
         return assets;
     }
 
+    /*------------------------VIEW VAULT DETAILS---------------------*/
+
+    function totalAssets() public view returns (uint256) {
+        return VAULT_ACCOUNT.totalAssets;
+    }
+
+    function totalShares() public view returns (uint256) {
+        return VAULT_ACCOUNT.totalShares;
+    }
+
     /*------------------DEPOSIT/WITHDRAWAL LIMITS--------------------*/
 
     function maxDeposit() public pure returns (uint256) {
@@ -235,35 +280,35 @@ contract ERC4626 is ERC20 {
         return balanceOf[owner];
     }
 
-    /*------------------VIEW UNDERLYING ASSET DETAILS----------------*/
+    /*------------------UPDATE VAULT ACCOUNT DETAILS----------------*/
 
-    function getAsset() public view returns (address) {
-        address assetTokenAddress = address(ERC20(asset));
-        return assetTokenAddress;
+    function addAssetsToVaultAccount(uint256 assets) internal {
+        VAULT_ACCOUNT.totalAssets += assets;
     }
 
-    function totalAssets() public view returns (uint256) {
-        return asset.balanceOf(address(this));
+    function withdrawAssetsFromVaultAccount(uint256 assets) internal {
+        VAULT_ACCOUNT.totalAssets -= assets;
     }
 
-    /*-----------------------OWNER ONLY FUNCTIONS--------------------*/
-
-    function setFee(uint256 new_Fee) external onlyOwner {
-        require(new_Fee <= MAX_BASIS_POINT_FEE, "FEE TOO HIGH");
-        uint256 oldFee = basis_point_fee;
-        basis_point_fee = new_Fee;
-        emit Fee_Updated(oldFee, new_Fee, msg.sender);
+    function addSharesToVaultAccount(uint256 assets) internal {
+        VAULT_ACCOUNT.totalShares += convertToShares(assets);
     }
 
-    function withdrawVaultAssets() external onlyOwner returns (uint256 assets) {
-        uint256 shares = balanceOf[address(this)];
-        assets = convertToAssets(shares);
+    function withdrawSharesFromVaultAccount(uint256 assets) internal {
+        VAULT_ACCOUNT.totalShares -= convertToShares(assets);
+    }
 
-        _burn(address(this), shares);
-        asset.transfer(msg.sender, assets);
+    /*-------CONVERSION FROM ASSETS TO SHARES AND VICE VERSA---------*/
 
-        emit Vault_Assets_Withdrawn(address(this), msg.sender, assets);
+    function convertToShares(
+        uint256 assets
+    ) internal view returns (uint256 shares) {
+        return totalShares().mulDivDown(assets, totalAssets());
+    }
 
-        return assets;
+    function convertToAssets(
+        uint256 shares
+    ) internal view returns (uint256 assets) {
+        return totalAssets().mulDivDown(shares, totalShares());
     }
 }
