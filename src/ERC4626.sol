@@ -91,7 +91,8 @@ contract ERC4626 is ERC20 {
     }
 
     modifier validReceiver(address receiver) {
-        if (receiver == address(0)) revert ERC4626__InvalidReceiver();
+        if ((receiver == address(0)) || (receiver == address(this)))
+            revert ERC4626__InvalidReceiver();
         _;
     }
 

@@ -16,20 +16,22 @@ contract TestVault is Test {
     error ERC4626_FeeTooHigh();
     error ERC4626__InvalidReceiver();
 
+    /*-------------------------STATE VARIABLES------------------------*/
+
     ERC20 mockERC20;
     ERC4626 vault;
+
     address payable alice = payable(makeAddr("alice"));
     address payable bob = payable(makeAddr("bob"));
     address private immutable owner = msg.sender;
+
     uint256 INITIAL_VAULT_ASSETS = 10_000;
+
     uint256 private constant ALICE_INITIAL_TOKENS = 50_000;
     uint256 private constant ALICE_DEPOSIT = 30_000;
     uint256 private constant ALICE_LIMITED_APPROVAL = 20_000;
     address private constant INVALID_RECEIVER = address(0);
 
-    /**
-     * @notice after every setup, alice has 10_000 assets and bob has none
-     */
     function setUp() public {
         //Instantiating mockERC20 Token with owner owning 100_000 tokens
         mockERC20 = new ERC20("MocKERCToken", "MT", 6, owner);
@@ -38,15 +40,25 @@ contract TestVault is Test {
         DeployVault deployer = new DeployVault();
         vault = deployer.run(address(mockERC20));
 
+        // Owner does the following two things
         vm.startPrank(owner);
-        // Owner does the following
-        // 1. Provides initial seed to vault with 5 asset tokens in return for 1 share
+
+        // 1. Provides initial seed to vault with 10_000 asset tokens
         mockERC20.approve(address(vault), INITIAL_VAULT_ASSETS);
         vault.deposit(INITIAL_VAULT_ASSETS, owner);
-        // 2. Transfer Alice 10_000 asset tokens for further testing
+
+        // 2. Transfer Alice 50_000 asset tokens for further testing
         mockERC20.transfer(alice, ALICE_INITIAL_TOKENS);
         vm.stopPrank();
     }
+
+    /**
+     * AFTER EACH SETUP
+     * Vault has 10_000 deposited assets, 2000 total shares supply
+     * Alice has 50_000 asset tokens, 0 shares
+     * Bob has 0 asset tokens, 0 shares
+     * Owner has 1980 shares
+     */
 
     /*----------------------------MODIFIERS--------------------------*/
 
@@ -74,7 +86,7 @@ contract TestVault is Test {
         _;
     }
 
-    /*--------------------DEPOSIT/WITHDRAWAL LOGIC-------------------*/
+    /*-------------------------TEST FUNCTIONS-------------------------*/
 
     function test_maxDeposit() public view {
         assertEq(vault.maxDeposit(), type(uint256).max);
@@ -354,5 +366,24 @@ contract TestVault is Test {
 
     function test_getUnderlyingAsset() public view {
         assertEq(vault.getUnderlyingAsset(), address(mockERC20));
+    }
+
+    function test_ERC20Metadata() public view {
+        assertEq(vault.name(), "MyVault");
+        assertEq(vault.symbol(), "MV");
+        assertEq(vault.decimals(), 8);
+        assertEq(vault.totalSupply(), vault.totalShares());
+    }
+
+    function test_nonces() public {
+        vm.startPrank(alice);
+        mockERC20.approve(address(vault), ALICE_INITIAL_TOKENS);
+        vault.deposit(25_000, alice);
+        vault.mint(10, alice);
+        vault.withdraw(10_000, alice, alice);
+        vault.redeem(10, alice, alice);
+        vm.stopPrank();
+
+        assertEq(vault.nonces(alice), 0);
     }
 }
