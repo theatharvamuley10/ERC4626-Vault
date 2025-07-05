@@ -26,8 +26,9 @@ import {IERC20} from "src/interfaces/IERC20.sol";
 import {ERC20} from "@solmate/src/tokens/ERC20.sol";
 import {FixedPointMathLib} from "@solmate/src/utils/FixedPointMathLib.sol";
 import {Errors} from "./libraries/Errors.sol";
+import {IERC4626} from "./interfaces/IERC4626.sol";
 
-contract ERC4626 is ERC20 {
+contract ERC4626 is ERC20, IERC4626 {
     /*------------------------Library Setup---------------------------*/
 
     using FixedPointMathLib for uint256;
@@ -47,34 +48,18 @@ contract ERC4626 is ERC20 {
         uint256 totalShares;
     }
 
-    /*----------------------------EVENTS-----------------------------*/
+    /*-------------------------CONSTRUCTOR---------------------------*/
 
-    event Deposit(
-        address indexed sender,
-        address indexed owner,
-        uint256 assets,
-        uint256 shares
-    );
-
-    event Withdraw(
-        address indexed sender,
-        address indexed receiver,
-        address indexed owner,
-        uint256 assets,
-        uint256 shares
-    );
-
-    event Fee_Updated(
-        uint256 indexed oldFee,
-        uint256 indexed newFee,
-        address indexed owner
-    );
-
-    event Vault_Assets_Withdrawn(
-        address indexed vault,
-        address indexed owner,
-        uint256 assets
-    );
+    constructor(
+        address _contractAddressOfAsset,
+        string memory _name,
+        string memory _symbol,
+        uint8 _decimals
+    ) ERC20(_name, _symbol, _decimals) {
+        contractAddressOfAsset = _contractAddressOfAsset;
+        asset = IERC20(_contractAddressOfAsset);
+        i_owner = msg.sender;
+    }
 
     /*---------------------------MODIFIERS---------------------------*/
 
@@ -89,25 +74,12 @@ contract ERC4626 is ERC20 {
         _;
     }
 
-    /*-------------------------CONSTRUCTOR---------------------------*/
-
-    constructor(
-        address _contractAddressOfAsset,
-        string memory _name,
-        string memory _symbol,
-        uint8 _decimals
-    ) ERC20(_name, _symbol, _decimals) {
-        contractAddressOfAsset = _contractAddressOfAsset;
-        asset = IERC20(_contractAddressOfAsset);
-        i_owner = msg.sender;
-    }
-
     /*--------------------DEPOSIT/WITHDRAWAL LOGIC-------------------*/
 
     function deposit(
         uint256 assets,
         address receiver
-    ) external validReceiver(receiver) returns (uint256 shares) {
+    ) external override validReceiver(receiver) returns (uint256 shares) {
         if ((shares = previewDeposit(assets)) == 0) {
             revert Errors.ERC4626__InsufficientAssets();
         }
@@ -121,13 +93,13 @@ contract ERC4626 is ERC20 {
         _mint(address(this), depositFee(assets));
         vault_account.totalShares += depositFee(assets);
 
-        emit Deposit(msg.sender, receiver, assets, shares);
+        emit IERC4626.Deposit(msg.sender, receiver, assets, shares);
     }
 
     function mint(
         uint256 shares,
         address receiver
-    ) external validReceiver(receiver) returns (uint256 assets) {
+    ) external override validReceiver(receiver) returns (uint256 assets) {
         if (asset.balanceOf(msg.sender) < (assets = previewMint(shares))) {
             revert Errors.ERC4626__InsufficientAssets();
         }
@@ -141,14 +113,14 @@ contract ERC4626 is ERC20 {
         _mint(address(this), convertToShares(assets) - shares);
         vault_account.totalShares += depositFee(assets);
 
-        emit Deposit(msg.sender, receiver, assets, shares);
+        emit IERC4626.Deposit(msg.sender, receiver, assets, shares);
     }
 
     function withdraw(
         uint256 assets,
         address receiver,
         address owner
-    ) external validReceiver(receiver) returns (uint256 shares) {
+    ) external override validReceiver(receiver) returns (uint256 shares) {
         if ((shares = previewWithdraw(assets)) > balanceOf[owner]) {
             revert Errors.ERC4626__InsufficientShareBalance();
         }
@@ -167,14 +139,14 @@ contract ERC4626 is ERC20 {
         vault_account.totalAssets -= assets;
         asset.transfer(receiver, assets);
 
-        emit Withdraw(msg.sender, receiver, owner, assets, shares);
+        emit IERC4626.Withdraw(msg.sender, receiver, owner, assets, shares);
     }
 
     function redeem(
         uint256 shares,
         address receiver,
         address owner
-    ) external validReceiver(receiver) returns (uint256 assets) {
+    ) external override validReceiver(receiver) returns (uint256 assets) {
         if (shares > balanceOf[owner]) {
             revert Errors.ERC4626__InsufficientShareBalance();
         }
@@ -193,19 +165,24 @@ contract ERC4626 is ERC20 {
         vault_account.totalAssets -= assets;
         asset.transfer(receiver, assets);
 
-        emit Withdraw(msg.sender, receiver, owner, assets, shares);
+        emit IERC4626.Withdraw(msg.sender, receiver, owner, assets, shares);
     }
 
     /*-----------------------OWNER ONLY FUNCTIONS--------------------*/
 
-    function setFee(uint256 new_Fee) external onlyOwner {
+    function setFee(uint256 new_Fee) external override onlyOwner {
         if (new_Fee > MAX_BASIS_POINT_FEE) revert Errors.ERC4626_FeeTooHigh();
         uint256 oldFee = basis_point_fee;
         basis_point_fee = new_Fee;
         emit Fee_Updated(oldFee, new_Fee, msg.sender);
     }
 
-    function withdrawVaultAssets() external onlyOwner returns (uint256 assets) {
+    function withdrawVaultAssets()
+        external
+        override
+        onlyOwner
+        returns (uint256 assets)
+    {
         uint256 shares = balanceOf[address(this)];
         assets = convertToAssets(shares);
 
@@ -222,11 +199,11 @@ contract ERC4626 is ERC20 {
 
     /*------------------VIEW UNDERLYING ASSET DETAILS----------------*/
 
-    function getUnderlyingAsset() external view returns (address) {
+    function getUnderlyingAsset() external view override returns (address) {
         return contractAddressOfAsset;
     }
 
-    function getFee() external view returns (uint256) {
+    function getFee() external view override returns (uint256) {
         return basis_point_fee;
     }
 
