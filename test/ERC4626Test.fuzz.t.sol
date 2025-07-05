@@ -6,16 +6,9 @@ import {ERC4626} from "src/ERC4626.sol";
 import {ERC20} from "src/mocks/MockERC20.sol";
 import {DeployVault} from "script/DeployERC4626.s.sol";
 import {stdError} from "forge-std/StdError.sol";
+import {Errors} from "../src/libraries/Errors.sol";
 
 contract TestVault is Test {
-    /*-------------------------CUSTOM ERRORS--------------------------*/
-
-    error ERC4626__InsufficientAssets();
-    error ERC4626__InsufficientShareBalance();
-    error ERC4626_OnlyOwnerCanSetFees();
-    error ERC4626_FeeTooHigh();
-    error ERC4626__InvalidReceiver();
-
     ERC20 mockERC20;
     ERC4626 vault;
     address payable alice = payable(makeAddr("alice"));

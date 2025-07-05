@@ -6,16 +6,9 @@ import {ERC4626} from "src/ERC4626.sol";
 import {ERC20} from "src/mocks/MockERC20.sol";
 import {DeployVault} from "script/DeployERC4626.s.sol";
 import {stdError} from "forge-std/StdError.sol";
+import {Errors} from "../src/libraries/Errors.sol";
 
 contract TestVault is Test {
-    /*-------------------------CUSTOM ERRORS--------------------------*/
-
-    error ERC4626__InsufficientAssets();
-    error ERC4626__InsufficientShareBalance();
-    error ERC4626_OnlyOwnerCanSetFees();
-    error ERC4626_FeeTooHigh();
-    error ERC4626__InvalidReceiver();
-
     /*-------------------------STATE VARIABLES------------------------*/
 
     ERC20 mockERC20;
@@ -114,7 +107,7 @@ contract TestVault is Test {
     // deposit
     function testRevert_sharesEqualZero() public aliceApprovesVault {
         vm.prank(alice);
-        vm.expectRevert(ERC4626__InsufficientAssets.selector);
+        vm.expectRevert(Errors.ERC4626__InsufficientAssets.selector);
         vault.deposit(5, alice);
     }
 
@@ -139,7 +132,7 @@ contract TestVault is Test {
     }
 
     function testRevert_InvalidReceiverForDeposit() public aliceApprovesVault {
-        vm.expectRevert(ERC4626__InvalidReceiver.selector);
+        vm.expectRevert(Errors.ERC4626__InvalidReceiver.selector);
         vm.prank(alice);
         vault.deposit(ALICE_DEPOSIT, INVALID_RECEIVER);
     }
@@ -167,7 +160,7 @@ contract TestVault is Test {
     // mint
     function testRevert_needMoreAssets() public aliceApprovesVault {
         vm.prank(alice);
-        vm.expectRevert(ERC4626__InsufficientAssets.selector);
+        vm.expectRevert(Errors.ERC4626__InsufficientAssets.selector);
         vault.mint(INITIAL_VAULT_ASSETS + 1, alice);
     }
 
@@ -179,7 +172,7 @@ contract TestVault is Test {
 
     function testRevert_InvalidReceiverForMint() public aliceApprovesVault {
         vm.prank(alice);
-        vm.expectRevert(ERC4626__InvalidReceiver.selector);
+        vm.expectRevert(Errors.ERC4626__InvalidReceiver.selector);
         vault.mint(ALICE_DEPOSIT / 5, INVALID_RECEIVER);
     }
 
@@ -204,7 +197,7 @@ contract TestVault is Test {
         aliceDeposits30K
     {
         vm.prank(alice);
-        vm.expectRevert(ERC4626__InsufficientShareBalance.selector);
+        vm.expectRevert(Errors.ERC4626__InsufficientShareBalance.selector);
         vault.withdraw(ALICE_DEPOSIT, alice, alice);
     }
 
@@ -225,7 +218,7 @@ contract TestVault is Test {
         aliceApproveBobFor5000Shares
     {
         vm.prank(bob);
-        vm.expectRevert(ERC4626__InvalidReceiver.selector);
+        vm.expectRevert(Errors.ERC4626__InvalidReceiver.selector);
         vault.withdraw(ALICE_LIMITED_APPROVAL, INVALID_RECEIVER, alice);
     }
 
@@ -259,7 +252,7 @@ contract TestVault is Test {
         aliceDeposits30K
     {
         vm.prank(alice);
-        vm.expectRevert(ERC4626__InsufficientShareBalance.selector);
+        vm.expectRevert(Errors.ERC4626__InsufficientShareBalance.selector);
         vault.redeem(ALICE_DEPOSIT / 5, alice, alice);
     }
 
@@ -280,7 +273,7 @@ contract TestVault is Test {
         aliceDeposits30K
     {
         vm.prank(alice);
-        vm.expectRevert(ERC4626__InvalidReceiver.selector);
+        vm.expectRevert(Errors.ERC4626__InvalidReceiver.selector);
         vault.redeem(5000, INVALID_RECEIVER, alice);
     }
 
@@ -313,7 +306,7 @@ contract TestVault is Test {
 
     //fees
     function testRevert_nonOwnerSetsFee() public {
-        vm.expectRevert(ERC4626_OnlyOwnerCanSetFees.selector);
+        vm.expectRevert(Errors.ERC4626_OnlyOwnerCanSetFees.selector);
         vm.prank(alice);
         vault.setFee(300);
         assertEq(vault.getFee(), 100);
@@ -321,7 +314,7 @@ contract TestVault is Test {
 
     function testRevert_ownerSetsHighFee() public {
         assertEq(vault.getFee(), 100);
-        vm.expectRevert(ERC4626_FeeTooHigh.selector);
+        vm.expectRevert(Errors.ERC4626_FeeTooHigh.selector);
         vm.prank(owner);
         vault.setFee(600);
         assertEq(vault.getFee(), 100);
@@ -338,7 +331,7 @@ contract TestVault is Test {
     function testRevert_nonOwnerTriesToWithdrawAssets() public {
         uint256 vaultAssets = vault.totalAssets();
         uint256 vaultShares = vault.totalShares();
-        vm.expectRevert(ERC4626_OnlyOwnerCanSetFees.selector);
+        vm.expectRevert(Errors.ERC4626_OnlyOwnerCanSetFees.selector);
         vm.prank(alice);
         vault.withdrawVaultAssets();
         assertEq(vault.totalAssets(), vaultAssets);

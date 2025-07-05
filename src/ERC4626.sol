@@ -25,19 +25,12 @@ pragma solidity 0.8.30;
 import {IERC20} from "src/interfaces/IERC20.sol";
 import {ERC20} from "@solmate/src/tokens/ERC20.sol";
 import {FixedPointMathLib} from "@solmate/src/utils/FixedPointMathLib.sol";
+import {Errors} from "./libraries/Errors.sol";
 
 contract ERC4626 is ERC20 {
     /*------------------------Library Setup---------------------------*/
 
     using FixedPointMathLib for uint256;
-
-    /*-------------------------CUSTOM ERRORS--------------------------*/
-
-    error ERC4626__InsufficientAssets();
-    error ERC4626__InsufficientShareBalance();
-    error ERC4626_OnlyOwnerCanSetFees();
-    error ERC4626_FeeTooHigh();
-    error ERC4626__InvalidReceiver();
 
     /*-------------------------Immutables-----------------------------*/
 
@@ -86,13 +79,13 @@ contract ERC4626 is ERC20 {
     /*---------------------------MODIFIERS---------------------------*/
 
     modifier onlyOwner() {
-        if (msg.sender != i_owner) revert ERC4626_OnlyOwnerCanSetFees();
+        if (msg.sender != i_owner) revert Errors.ERC4626_OnlyOwnerCanSetFees();
         _;
     }
 
     modifier validReceiver(address receiver) {
         if ((receiver == address(0)) || (receiver == address(this)))
-            revert ERC4626__InvalidReceiver();
+            revert Errors.ERC4626__InvalidReceiver();
         _;
     }
 
@@ -116,7 +109,7 @@ contract ERC4626 is ERC20 {
         address receiver
     ) external validReceiver(receiver) returns (uint256 shares) {
         if ((shares = previewDeposit(assets)) == 0) {
-            revert ERC4626__InsufficientAssets();
+            revert Errors.ERC4626__InsufficientAssets();
         }
 
         asset.transferFrom(msg.sender, address(this), assets);
@@ -136,7 +129,7 @@ contract ERC4626 is ERC20 {
         address receiver
     ) external validReceiver(receiver) returns (uint256 assets) {
         if (asset.balanceOf(msg.sender) < (assets = previewMint(shares))) {
-            revert ERC4626__InsufficientAssets();
+            revert Errors.ERC4626__InsufficientAssets();
         }
 
         asset.transferFrom(msg.sender, address(this), assets);
@@ -157,7 +150,7 @@ contract ERC4626 is ERC20 {
         address owner
     ) external validReceiver(receiver) returns (uint256 shares) {
         if ((shares = previewWithdraw(assets)) > balanceOf[owner]) {
-            revert ERC4626__InsufficientShareBalance();
+            revert Errors.ERC4626__InsufficientShareBalance();
         }
 
         if (owner != msg.sender) {
@@ -183,7 +176,7 @@ contract ERC4626 is ERC20 {
         address owner
     ) external validReceiver(receiver) returns (uint256 assets) {
         if (shares > balanceOf[owner]) {
-            revert ERC4626__InsufficientShareBalance();
+            revert Errors.ERC4626__InsufficientShareBalance();
         }
         if (owner != msg.sender) {
             if (allowance[owner][msg.sender] != type(uint256).max)
@@ -206,7 +199,7 @@ contract ERC4626 is ERC20 {
     /*-----------------------OWNER ONLY FUNCTIONS--------------------*/
 
     function setFee(uint256 new_Fee) external onlyOwner {
-        if (new_Fee > MAX_BASIS_POINT_FEE) revert ERC4626_FeeTooHigh();
+        if (new_Fee > MAX_BASIS_POINT_FEE) revert Errors.ERC4626_FeeTooHigh();
         uint256 oldFee = basis_point_fee;
         basis_point_fee = new_Fee;
         emit Fee_Updated(oldFee, new_Fee, msg.sender);
