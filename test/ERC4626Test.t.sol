@@ -111,20 +111,13 @@ contract TestVault is Test {
         vault.deposit(5, alice);
     }
 
-    function testRevert_allowanceInsufficient()
-        public
-        aliceLimitedApprovesVault
-    {
+    function testRevert_allowanceInsufficient() public aliceLimitedApprovesVault {
         vm.prank(alice);
         vm.expectRevert(stdError.arithmeticError);
         vault.deposit(ALICE_DEPOSIT, alice);
     }
 
-    function testRevert_insufficientBalance()
-        public
-        aliceApprovesVault
-        aliceDeposits30K
-    {
+    function testRevert_insufficientBalance() public aliceApprovesVault aliceDeposits30K {
         vm.startPrank(alice);
         mockERC20.approve(address(vault), type(uint256).max);
         vm.expectRevert(stdError.arithmeticError);
@@ -137,24 +130,14 @@ contract TestVault is Test {
         vault.deposit(ALICE_DEPOSIT, INVALID_RECEIVER);
     }
 
-    function test_depositSuccessful()
-        public
-        aliceApprovesVault
-        aliceDeposits30K
-    {
+    function test_depositSuccessful() public aliceApprovesVault aliceDeposits30K {
         assertEq(vault.totalAssets(), INITIAL_VAULT_ASSETS + ALICE_DEPOSIT);
         assertEq(
             vault.totalShares(),
             (INITIAL_VAULT_ASSETS + ALICE_DEPOSIT) / 5 // since the total shares after 2 deposits still follow the same ration
         );
-        assertEq(
-            mockERC20.balanceOf(alice),
-            ALICE_INITIAL_TOKENS - ALICE_DEPOSIT
-        );
-        assertEq(
-            vault.balanceOf(alice),
-            ALICE_DEPOSIT / 5 - ((ALICE_DEPOSIT / 5) / 100)
-        );
+        assertEq(mockERC20.balanceOf(alice), ALICE_INITIAL_TOKENS - ALICE_DEPOSIT);
+        assertEq(vault.balanceOf(alice), ALICE_DEPOSIT / 5 - ((ALICE_DEPOSIT / 5) / 100));
     }
 
     // mint
@@ -191,21 +174,13 @@ contract TestVault is Test {
     }
 
     // withdraw
-    function testRevert_insufficientShares()
-        public
-        aliceApprovesVault
-        aliceDeposits30K
-    {
+    function testRevert_insufficientShares() public aliceApprovesVault aliceDeposits30K {
         vm.prank(alice);
         vm.expectRevert(Errors.ERC4626__InsufficientShareBalance.selector);
         vault.withdraw(ALICE_DEPOSIT, alice, alice);
     }
 
-    function testRevert_noShareAllowance()
-        public
-        aliceApprovesVault
-        aliceDeposits30K
-    {
+    function testRevert_noShareAllowance() public aliceApprovesVault aliceDeposits30K {
         vm.prank(bob);
         vm.expectRevert(Errors.ERC4626__NotApprovedToSpendShares.selector);
         vault.withdraw(ALICE_LIMITED_APPROVAL, alice, alice);
@@ -222,23 +197,14 @@ contract TestVault is Test {
         vault.withdraw(ALICE_LIMITED_APPROVAL, INVALID_RECEIVER, alice);
     }
 
-    function test_aliceWithdrawsAlicesShares()
-        public
-        aliceApprovesVault
-        aliceDeposits30K
-    {
+    function test_aliceWithdrawsAlicesShares() public aliceApprovesVault aliceDeposits30K {
         vm.prank(alice);
         vault.withdraw(ALICE_LIMITED_APPROVAL, alice, alice);
         assertLt(mockERC20.balanceOf(alice), ALICE_INITIAL_TOKENS);
         assertLt(vault.balanceOf(alice), ALICE_DEPOSIT / 5);
     }
 
-    function test_bobWithdrawsAlicesShares()
-        public
-        aliceApprovesVault
-        aliceDeposits30K
-        aliceApproveBobFor5000Shares
-    {
+    function test_bobWithdrawsAlicesShares() public aliceApprovesVault aliceDeposits30K aliceApproveBobFor5000Shares {
         vm.prank(bob);
         vault.withdraw(ALICE_LIMITED_APPROVAL, alice, alice);
         assertLt(mockERC20.balanceOf(alice), ALICE_INITIAL_TOKENS);
@@ -246,11 +212,7 @@ contract TestVault is Test {
     }
 
     //redeem
-    function testRevert_insufficientShareBalance()
-        public
-        aliceApprovesVault
-        aliceDeposits30K
-    {
+    function testRevert_insufficientShareBalance() public aliceApprovesVault aliceDeposits30K {
         vm.prank(alice);
         vm.expectRevert(Errors.ERC4626__InsufficientShareBalance.selector);
         vault.redeem(ALICE_DEPOSIT / 5, alice, alice);
@@ -267,21 +229,13 @@ contract TestVault is Test {
         vault.redeem(5500, bob, alice);
     }
 
-    function testRevert_InvalidReceiverForRedeem()
-        public
-        aliceApprovesVault
-        aliceDeposits30K
-    {
+    function testRevert_InvalidReceiverForRedeem() public aliceApprovesVault aliceDeposits30K {
         vm.prank(alice);
         vm.expectRevert(Errors.ERC4626__InvalidReceiver.selector);
         vault.redeem(5000, INVALID_RECEIVER, alice);
     }
 
-    function test_AliceReedemsAlicesShares()
-        public
-        aliceApprovesVault
-        aliceDeposits30K
-    {
+    function test_AliceReedemsAlicesShares() public aliceApprovesVault aliceDeposits30K {
         vm.prank(alice);
         vault.redeem(5000, bob, alice);
 
@@ -289,12 +243,7 @@ contract TestVault is Test {
         assertGt(ALICE_DEPOSIT / 6, vault.balanceOf(alice));
     }
 
-    function test_bobReedemsAlicesShares()
-        public
-        aliceApprovesVault
-        aliceDeposits30K
-        aliceApproveBobFor5000Shares
-    {
+    function test_bobReedemsAlicesShares() public aliceApprovesVault aliceDeposits30K aliceApproveBobFor5000Shares {
         vm.prank(bob);
         vault.redeem(5000, bob, alice);
 
@@ -341,9 +290,7 @@ contract TestVault is Test {
     function test_OwnerWithdrawsAssetsOwnedByVault() public {
         uint256 totalSharesBeforeWithdraw = vault.totalShares();
         uint256 totalAssetsBeforeWithdraw = vault.totalAssets();
-        uint256 assetTokensOwnedByOwnerBeforeWithdraw = mockERC20.balanceOf(
-            owner
-        );
+        uint256 assetTokensOwnedByOwnerBeforeWithdraw = mockERC20.balanceOf(owner);
 
         vm.prank(owner);
         vault.withdrawVaultAssets();
@@ -351,10 +298,7 @@ contract TestVault is Test {
         assertLt(vault.totalShares(), totalSharesBeforeWithdraw);
         assertLt(vault.totalAssets(), totalAssetsBeforeWithdraw);
         assertEq(vault.balanceOf(address(vault)), 0);
-        assertGt(
-            mockERC20.balanceOf(owner),
-            assetTokensOwnedByOwnerBeforeWithdraw
-        );
+        assertGt(mockERC20.balanceOf(owner), assetTokensOwnedByOwnerBeforeWithdraw);
     }
 
     function test_getUnderlyingAsset() public view {

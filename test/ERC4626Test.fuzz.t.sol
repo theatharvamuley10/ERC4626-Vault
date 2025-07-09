@@ -45,18 +45,14 @@ contract TestVault is Test {
         vm.assume((assets > 9) && (assets < ALICE_INITIAL_TOKENS));
         vm.assume((receiver != address(0)) && (receiver != address(vault)));
 
-        uint256 totalAssetsBeforeDeposit = mockERC20.balanceOf(alice) +
-            mockERC20.balanceOf(address(vault));
+        uint256 totalAssetsBeforeDeposit = mockERC20.balanceOf(alice) + mockERC20.balanceOf(address(vault));
 
         vm.startPrank(alice);
         mockERC20.approve(address(vault), assets);
         vault.deposit(assets, receiver);
 
         assertEq(vault.totalAssets(), assets + INITIAL_VAULT_ASSETS);
-        assertEq(
-            mockERC20.balanceOf(alice) + mockERC20.balanceOf(address(vault)),
-            totalAssetsBeforeDeposit
-        );
+        assertEq(mockERC20.balanceOf(alice) + mockERC20.balanceOf(address(vault)), totalAssetsBeforeDeposit);
     }
 
     function test_mint(uint16 shares, address receiver) public {
@@ -74,10 +70,7 @@ contract TestVault is Test {
         uint256 aliceAssetsAfter = mockERC20.balanceOf(alice);
         uint256 vaultAssetsAfter = mockERC20.balanceOf(address(vault));
 
-        assertEq(
-            aliceAssetsBefore - aliceAssetsAfter,
-            vaultAssetsAfter - vaultAssetsBefore
-        );
+        assertEq(aliceAssetsBefore - aliceAssetsAfter, vaultAssetsAfter - vaultAssetsBefore);
     }
 
     function test_withdraw(uint32 assets, address receiver) public {

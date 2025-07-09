@@ -81,11 +81,7 @@ contract ERC4626 is ERC20, IERC4626 {
      * @param _symbol Symbol of the ERC20 token to be issued as shares.
      * @dev The deployer becomes the owner of the vault.
      */
-    constructor(
-        address _contractAddressOfAsset,
-        string memory _name,
-        string memory _symbol
-    ) ERC20(_name, _symbol) {
+    constructor(address _contractAddressOfAsset, string memory _name, string memory _symbol) ERC20(_name, _symbol) {
         asset = IERC20(_contractAddressOfAsset);
         i_owner = msg.sender;
     }
@@ -101,10 +97,7 @@ contract ERC4626 is ERC20, IERC4626 {
      * @param receiver Address to receive the minted shares.
      * @return shares Amount of shares minted to the receiver.
      */
-    function deposit(
-        uint256 assets,
-        address receiver
-    ) external override returns (uint256 shares) {
+    function deposit(uint256 assets, address receiver) external override returns (uint256 shares) {
         validReceiver(receiver);
 
         if ((shares = previewDeposit(assets)) == 0) {
@@ -130,10 +123,7 @@ contract ERC4626 is ERC20, IERC4626 {
      * @param receiver Address to receive the minted shares.
      * @return assets Amount of assets deposited.
      */
-    function mint(
-        uint256 shares,
-        address receiver
-    ) external override returns (uint256 assets) {
+    function mint(uint256 shares, address receiver) external override returns (uint256 assets) {
         validReceiver(receiver);
 
         if (asset.balanceOf(msg.sender) < (assets = previewMint(shares))) {
@@ -160,11 +150,7 @@ contract ERC4626 is ERC20, IERC4626 {
      * @param owner Address whose shares will be burned.
      * @return shares Amount of shares burned.
      */
-    function withdraw(
-        uint256 assets,
-        address receiver,
-        address owner
-    ) external override returns (uint256 shares) {
+    function withdraw(uint256 assets, address receiver, address owner) external override returns (uint256 shares) {
         validReceiver(receiver);
 
         if ((shares = previewWithdraw(assets)) > balanceOf(owner)) {
@@ -172,8 +158,9 @@ contract ERC4626 is ERC20, IERC4626 {
         }
 
         if (owner != msg.sender) {
-            if (allowance(owner, msg.sender) < shares)
+            if (allowance(owner, msg.sender) < shares) {
                 revert Errors.ERC4626__NotApprovedToSpendShares();
+            }
         }
 
         vault_account.totalShares -= shares;
@@ -196,19 +183,16 @@ contract ERC4626 is ERC20, IERC4626 {
      * @param owner Address whose shares will be burned.
      * @return assets Amount of assets withdrawn.
      */
-    function redeem(
-        uint256 shares,
-        address receiver,
-        address owner
-    ) external override returns (uint256 assets) {
+    function redeem(uint256 shares, address receiver, address owner) external override returns (uint256 assets) {
         validReceiver(receiver);
 
         if (shares > balanceOf(owner)) {
             revert Errors.ERC4626__InsufficientShareBalance();
         }
         if (owner != msg.sender) {
-            if (allowance(owner, msg.sender) < shares)
+            if (allowance(owner, msg.sender) < shares) {
                 revert Errors.ERC4626__NotApprovedToSpendShares();
+            }
         }
         assets = previewRedeem(shares);
 
@@ -292,9 +276,7 @@ contract ERC4626 is ERC20, IERC4626 {
      * @param assets Amount of assets to deposit.
      * @return shares Amount of shares that would be minted.
      */
-    function previewDeposit(
-        uint256 assets
-    ) public view returns (uint256 shares) {
+    function previewDeposit(uint256 assets) public view returns (uint256 shares) {
         uint256 fee;
         shares = convertToShares(assets);
         fee = basis_point_fee.mulDivUp(shares, FEE_DENOMINATOR);
@@ -318,9 +300,7 @@ contract ERC4626 is ERC20, IERC4626 {
      * @param assets Amount of assets to withdraw.
      * @return shares Amount of shares required.
      */
-    function previewWithdraw(
-        uint256 assets
-    ) public view returns (uint256 shares) {
+    function previewWithdraw(uint256 assets) public view returns (uint256 shares) {
         uint256 fee;
         shares = convertToShares(assets);
         fee = basis_point_fee.mulDivUp(shares, FEE_DENOMINATOR);
@@ -333,9 +313,7 @@ contract ERC4626 is ERC20, IERC4626 {
      * @param shares Amount of shares to redeem.
      * @return assets Amount of assets received.
      */
-    function previewRedeem(
-        uint256 shares
-    ) public view returns (uint256 assets) {
+    function previewRedeem(uint256 shares) public view returns (uint256 assets) {
         uint256 fee;
         fee = basis_point_fee.mulDivUp(shares, FEE_DENOMINATOR);
         shares -= fee;
@@ -410,13 +388,8 @@ contract ERC4626 is ERC20, IERC4626 {
      * @param assets Amount of assets to convert.
      * @return shares Equivalent shares.
      */
-    function convertToShares(
-        uint256 assets
-    ) internal view returns (uint256 shares) {
-        return
-            totalShares() == 0
-                ? assets / 5
-                : totalShares().mulDivDown(assets, totalAssets());
+    function convertToShares(uint256 assets) internal view returns (uint256 shares) {
+        return totalShares() == 0 ? assets / 5 : totalShares().mulDivDown(assets, totalAssets());
     }
 
     /**
@@ -424,9 +397,7 @@ contract ERC4626 is ERC20, IERC4626 {
      * @param shares Amount of shares to convert.
      * @return assets Equivalent assets.
      */
-    function convertToAssets(
-        uint256 shares
-    ) internal view returns (uint256 assets) {
+    function convertToAssets(uint256 shares) internal view returns (uint256 assets) {
         return totalAssets().mulDivDown(shares, totalShares());
     }
 
@@ -440,8 +411,7 @@ contract ERC4626 is ERC20, IERC4626 {
      * @return Fee in shares.
      */
     function depositFee(uint256 assets) internal view returns (uint256) {
-        return
-            basis_point_fee.mulDivUp(convertToShares(assets), FEE_DENOMINATOR);
+        return basis_point_fee.mulDivUp(convertToShares(assets), FEE_DENOMINATOR);
     }
 
     /**
@@ -471,9 +441,6 @@ contract ERC4626 is ERC20, IERC4626 {
      * @param receiver Address to validate.
      */
     function validReceiver(address receiver) internal view {
-        require(
-            !((receiver == address(0)) || (receiver == address(this))),
-            Errors.ERC4626__InvalidReceiver()
-        );
+        require(!((receiver == address(0)) || (receiver == address(this))), Errors.ERC4626__InvalidReceiver());
     }
 }
