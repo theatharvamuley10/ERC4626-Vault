@@ -7,12 +7,7 @@ import {ERC4626} from "src/ERC4626.sol";
 contract DeployVault is Script {
     function run(address underlyingAssetContract) external returns (ERC4626) {
         vm.startBroadcast();
-        ERC4626 vault = new ERC4626(
-            underlyingAssetContract,
-            "MyVault",
-            "MV",
-            8
-        );
+        ERC4626 vault = new ERC4626(underlyingAssetContract, "MyVault", "MV");
         vm.stopBroadcast();
         return vault;
     }

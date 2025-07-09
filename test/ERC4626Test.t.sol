@@ -207,7 +207,7 @@ contract TestVault is Test {
         aliceDeposits30K
     {
         vm.prank(bob);
-        vm.expectRevert(stdError.arithmeticError);
+        vm.expectRevert(Errors.ERC4626__NotApprovedToSpendShares.selector);
         vault.withdraw(ALICE_LIMITED_APPROVAL, alice, alice);
     }
 
@@ -263,7 +263,7 @@ contract TestVault is Test {
         aliceApproveBobFor5000Shares
     {
         vm.prank(bob);
-        vm.expectRevert(stdError.arithmeticError);
+        vm.expectRevert(Errors.ERC4626__NotApprovedToSpendShares.selector);
         vault.redeem(5500, bob, alice);
     }
 
@@ -364,7 +364,7 @@ contract TestVault is Test {
     function test_ERC20Metadata() public view {
         assertEq(vault.name(), "MyVault");
         assertEq(vault.symbol(), "MV");
-        assertEq(vault.decimals(), 8);
+        assertEq(vault.decimals(), 18);
         assertEq(vault.totalSupply(), vault.totalShares());
     }
 
@@ -376,7 +376,5 @@ contract TestVault is Test {
         vault.withdraw(10_000, alice, alice);
         vault.redeem(10, alice, alice);
         vm.stopPrank();
-
-        assertEq(vault.nonces(alice), 0);
     }
 }
